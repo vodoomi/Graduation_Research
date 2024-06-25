@@ -1,6 +1,40 @@
 from cfg import cfg
 from sentence_transformers import SentenceTransformer
 import numpy as np
+import pandas as pd
+
+def split_one_sentence(reviews):
+    """
+    Split one sentence into multiple sentences.
+
+    Args:
+        reviews (list): List of reviews.
+    
+    Returns:
+        list: List of splitted sentences.
+    """
+    splitted_reviews = []
+    for review in reviews:
+        splitted_reviews.extend(review.split("。"))
+    return splitted_reviews
+
+
+def load_data(data_path):
+    """
+    Load data from the given path.
+
+    Args:
+        data_path (str): Path to the data.
+    
+    Returns:
+        list: List of reviews.
+    """
+    data = pd.read_csv(data_path)
+    reviews = data["review"].tolist()
+    if cfg.sentence_split:
+        reviews = split_one_sentence(reviews)
+    return reviews
+
 
 def get_after_slash(string):
     """
@@ -31,6 +65,8 @@ def embedding(reviews, use_cache=True):
     """
     # Get the model name and reviews embedding path
     model_name = get_after_slash(cfg.embedding_model)
+    if cfg.sentence_split:
+        model_name = "split_" + model_name
     emb_path = f"../output/{cfg.data_type}/reviews_emb_{model_name}.npy"
 
     # Load the embeddings from cache
