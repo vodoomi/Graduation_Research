@@ -2,6 +2,40 @@ from cfg import cfg
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import pandas as pd
+from umap import UMAP
+from bertopic import BERTopic
+
+# num_repsentative_docsをトピックで各1つに変更
+class CustomBERTopic(BERTopic):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.umap_model = UMAP(n_neighbors=15,
+                               n_components=5,
+                               min_dist=0.0,
+                               metric='cosine',
+                               low_memory=self.low_memory,
+                               random_state=cfg.random_state)
+
+    def _save_representative_docs(self, documents: pd.DataFrame):
+        """ Save the 3 most representative docs per topic
+
+        Arguments:
+            documents: Dataframe with documents and their corresponding IDs
+
+        Updates:
+            self.representative_docs_: Populate each topic with 3 representative docs
+        """
+        repr_docs, _, _, _ = self._extract_representative_docs(
+            self.c_tf_idf_,
+            documents,
+            self.topic_representations_,
+            nr_samples=500,
+            nr_repr_docs=1
+        )
+        self.representative_docs_ = repr_docs
+
+
 
 def split_one_sentence(reviews):
     """
