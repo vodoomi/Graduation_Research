@@ -1,11 +1,14 @@
 from cfg import cfg
 from sentence_transformers import SentenceTransformer
+import re
 import numpy as np
 import pandas as pd
 from umap import UMAP
 from bertopic import BERTopic
+from datasets import Dataset
+from transformers import AutoModelForSequenceClassification, TrainingArguments, Trainer, DataCollatorWithPadding, AutoTokenizer
 
-# num_repsentative_docsをトピックで各1つに変更
+# num_repsentative_docsをトピックで各1つに変更, UMAPのseedを固定
 class CustomBERTopic(BERTopic):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -49,7 +52,7 @@ def split_one_sentence(reviews):
     """
     splitted_reviews = []
     for review in reviews:
-        splitted_reviews.extend(review.split("。"))
+        splitted_reviews.extend(re.split(r'[。.!?！？]', review))
     return splitted_reviews
 
 
@@ -84,6 +87,109 @@ def get_after_slash(string):
         return string.split("/")[-1]
     else:
         return string
+    
+
+def get_before_slash(string):
+    """
+    Get the substring before the last slash.
+
+    Args:
+        string (str): Input string.
+    
+    Returns:
+        str: Substring before the last slash.
+    """
+    if "/" in string:
+        return string.split("/")[0]
+    else:
+        return string
+
+
+def tokenize(example):
+    # Import inside the function to avoid error
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained(cfg.sentiment_model)
+
+    tokenized = tokenizer(
+        example["split_review"]
+    ) 
+        
+    return tokenized
+
+
+def sentiment_analysis(reviews, use_cache):
+    """
+    Perform sentiment analysis on the given reviews.
+
+    Args:
+        reviews (list): List of reviews.
+    
+    Returns:
+        sentiments (np.array): Sentiment predictions.
+        review_df (pd.DataFrame): Dataframe of reviews
+    """
+    # Get the model name and sentiment predictions path
+    model_name = get_before_slash(cfg.sentiment_model)
+    if cfg.sentence_split:
+        model_name = "split_" + model_name
+    
+    # Remove empty reviews
+    review_df = pd.DataFrame(reviews, columns=["review"])
+    review_df = review_df.query("review != ''")
+
+    # Load the predictions from cache
+    if use_cache:
+        try:
+            predictions = np.load(f"../output/{cfg.data_type}/sentiment_analysis_predictions_{model_name}.npy")
+            sentiments = np.argmax(predictions, axis=1)
+            return sentiments, review_df
+        except FileNotFoundError:
+            pass
+    
+    # Tokenize the reviews
+    ds = Dataset.from_pandas(review_df)
+    ds = ds.map(tokenize, num_proc=4)
+
+    # Perform sentiment analysis
+    tokenizer = AutoTokenizer.from_pretrained(cfg.sentiment_model)
+    collator = DataCollatorWithPadding(tokenizer)
+    args = TrainingArguments(
+        ".", 
+        per_device_eval_batch_size=cfg.sentiment_batch_size, 
+        report_to="none",
+    )
+
+    model = AutoModelForSequenceClassification.from_pretrained(cfg.sentiment_model)
+    trainer = Trainer(
+        model=model, 
+        args=args, 
+        data_collator=collator, 
+        tokenizer=tokenizer,
+    )
+    predictions = trainer.predict(ds).predictions
+    np.save(f"../output/{cfg.data_type}/sentiment_analysis_predictions_{model_name}.npy", predictions)
+    sentiments = np.argmax(predictions, axis=1)
+    
+    return sentiments, review_df
+
+
+def extract_negative_reviews(reviews, use_cache=True):
+    """
+    Extract negative reviews from the given reviews.
+
+    Args:
+        reviews (list): List of reviews.
+    
+    Returns:
+        list: List of negative reviews
+    """
+    # Perform sentiment analysis
+    sentiments, review_df = sentiment_analysis(reviews, use_cache)
+
+    # Extract negative reviews
+    negative_reviews = review_df.loc[sentiments == 0, "review"]
+    
+    return negative_reviews.tolist()
 
 
 def embedding(reviews, use_cache=True):
