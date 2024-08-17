@@ -1,5 +1,6 @@
+import pandas as pd
 from cfg import cfg
-from lib import embedding, load_data, extract_negative_reviews, CustomBERTopic
+from lib import embedding, load_data, extract_negative_reviews, summarize
 
 # Load data
 print("Loading data...")
@@ -11,24 +12,13 @@ negative_reviews = extract_negative_reviews(reviews, use_cache=True)
 
 # Embed reviews
 print("Embedding reviews...")
-reviews_embedding = embedding(negative_reviews, use_cache=False)
+reviews_embedding = embedding(negative_reviews, use_cache=True)
 
-# Extract common reviews using BERTopic
+# Extract common reviews using 
 print("Extracting common reviews...")
-model = CustomBERTopic()
-topics, _ = model.fit_transform(documents=negative_reviews, embeddings=reviews_embedding)
-representative_docs = model.get_representative_docs()
+common_reviews = summarize(negative_reviews, reviews_embedding, top_n=cfg.n_summarize_sentences)
 
-# Save the representative documents
-print("Saving representative documents...")
-if cfg.sentence_split:
-    path = f"../output/{cfg.data_type}/representative_docs_split.csv"
-else:
-    path = f"../output/{cfg.data_type}/representative_docs.csv"
-
-with open(path, 'w', encoding='utf-8') as f:
-    for topic, docs in representative_docs.items():
-        f.write(f"Topic {topic}\n")
-        for doc in docs:
-            f.write(f"{doc}\n")
-        f.write("\n")
+# Save common reviews
+print("Saving common reviews...")
+common_reviews_path = f"../output/{cfg.data_type}/common_reviews.csv"
+pd.DataFrame(common_reviews).to_csv(common_reviews_path, index=False, header=False)

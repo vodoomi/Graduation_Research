@@ -7,6 +7,9 @@ from umap import UMAP
 from bertopic import BERTopic
 from datasets import Dataset
 from transformers import AutoModelForSequenceClassification, TrainingArguments, Trainer, DataCollatorWithPadding, AutoTokenizer
+from sklearn.metrics.pairwise import cosine_similarity
+import networkx as nx
+from tqdm import tqdm
 
 # num_repsentative_docsをトピックで各1つに変更, UMAPのseedを固定
 class CustomBERTopic(BERTopic):
@@ -56,6 +59,20 @@ def split_one_sentence(reviews):
     return splitted_reviews
 
 
+def preprocess_reviews(reviews):
+    """
+    Preprocess reviews by removing empty strings.
+
+    Args:
+        reviews (list): List of reviews.
+    
+    Returns:
+        list: List of preprocessed reviews.
+    """
+    preprocessed_reviews = list(filter(lambda x: x and x.strip(), reviews))
+    return preprocessed_reviews
+
+
 def load_data(data_path):
     """
     Load data from the given path.
@@ -70,6 +87,7 @@ def load_data(data_path):
     reviews = data["review"].tolist()
     if cfg.sentence_split:
         reviews = split_one_sentence(reviews)
+    reviews = preprocess_reviews(reviews)
     return reviews
 
 
@@ -227,3 +245,32 @@ def embedding(reviews, use_cache=True):
     np.save(emb_path, sentence_embedding)
     
     return sentence_embedding
+
+
+# 1. コサイン類似度行列の作成
+def build_similarity_matrix(embeddings):
+    # cosine_similarity関数を使って類似度行列を作成
+    similarity_matrix = cosine_similarity(embeddings)
+    return similarity_matrix
+
+# 2. グラフの構築とPageRankの計算
+def lexrank(similarity_matrix, threshold=0.1):
+    # 類似度が閾値以上の場合にエッジを作成
+    graph = nx.Graph()
+    for i in tqdm(range(len(similarity_matrix))):
+        for j in range(i + 1, len(similarity_matrix)):
+            if similarity_matrix[i][j] > threshold:
+                graph.add_edge(i, j, weight=similarity_matrix[i][j])
+    
+    # PageRankアルゴリズムを適用
+    scores = nx.pagerank(graph, weight='weight')
+    return scores
+
+# 3. スコアに基づく文の選択
+def summarize(sentences, embeddings, top_n=3):
+    similarity_matrix = build_similarity_matrix(embeddings)
+    scores = lexrank(similarity_matrix, threshold=cfg.lex_rank_threshold)
+    # スコアが高い順に文を選択
+    ranked_sentences = sorted(((scores[i], s) for i, s in enumerate(sentences)), reverse=True)
+    summary = [s for _, s in ranked_sentences[:top_n]]
+    return summary
