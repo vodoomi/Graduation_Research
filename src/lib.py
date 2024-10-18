@@ -3,6 +3,7 @@ from sentence_transformers import SentenceTransformer
 import re
 import numpy as np
 import pandas as pd
+import polars as pl
 from umap import UMAP
 from bertopic import BERTopic
 from datasets import Dataset
@@ -41,6 +42,19 @@ class CustomBERTopic(BERTopic):
         )
         self.representative_docs_ = repr_docs
 
+def extract_specific_facility_reviews(facility_id):
+    """
+    Extract reviews of a specific facility.
+
+    Args:
+        facility_id (str): Facility ID.
+    
+    Returns:
+        list: List of reviews of the specific facility.
+    """
+    all_reviews_df = pl.read_csv(cfg.data_path)
+    facility_reviews_df = all_reviews_df.filter(pl.col("facility_id") == facility_id)
+    return facility_reviews_df["review"].to_list()
 
 
 def split_one_sentence(reviews):
@@ -83,11 +97,16 @@ def load_data(data_path):
     Returns:
         list: List of reviews.
     """
-    data = pd.read_csv(data_path)
-    reviews = data["review"].tolist()
+    assert cfg.data_type in ["jaran", "rakuten"], "cfg.data_type must be either 'jaran' or 'rakuten'."
+    if cfg.data_type == "jaran":
+        data = pd.read_csv(data_path)
+        reviews = data["review"].tolist()
+    elif cfg.data_type == "rakuten":
+        reviews = extract_specific_facility_reviews(cfg.facility_id)
     if cfg.sentence_split:
         reviews = split_one_sentence(reviews)
     reviews = preprocess_reviews(reviews)
+    print(f"Number of reviews: {len(reviews)}")
     return reviews
 
 
@@ -129,7 +148,7 @@ def tokenize(example):
     tokenizer = AutoTokenizer.from_pretrained(cfg.sentiment_model)
 
     tokenized = tokenizer(
-        example["split_review"]
+        example["review"]
     ) 
         
     return tokenized
@@ -166,7 +185,7 @@ def sentiment_analysis(reviews, use_cache):
     
     # Tokenize the reviews
     ds = Dataset.from_pandas(review_df)
-    ds = ds.map(tokenize, num_proc=4)
+    ds = ds.map(tokenize, batched=True)
 
     # Perform sentiment analysis
     tokenizer = AutoTokenizer.from_pretrained(cfg.sentiment_model)
@@ -206,6 +225,8 @@ def extract_negative_reviews(reviews, use_cache=True):
 
     # Extract negative reviews
     negative_reviews = review_df.loc[sentiments == 0, "review"]
+
+    print(f"Number of negative reviews: {len(negative_reviews)}")
     
     return negative_reviews.tolist()
 

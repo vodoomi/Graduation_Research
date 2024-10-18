@@ -1,1 +1,10 @@
+# Python
 **/__pycache__/**
+/notebook
+
+# Data
+/data
+/output/rakuten
+
+# Environment Variables
+.env

@@ -8,11 +8,11 @@ reviews = load_data(cfg.data_path)
 
 # Extract negative reviews
 print("Extracting negative reviews...")
-negative_reviews = extract_negative_reviews(reviews, use_cache=True)
+negative_reviews = extract_negative_reviews(reviews, use_cache=cfg.use_sentiment_cache)
 
 # Embed reviews
 print("Embedding reviews...")
-reviews_embedding = embedding(negative_reviews, use_cache=True)
+reviews_embedding = embedding(negative_reviews, use_cache=cfg.use_embedding_cache)
 
 # Extract common reviews using 
 print("Extracting common reviews...")
