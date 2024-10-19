@@ -1,16 +1,19 @@
-from cfg import cfg
-from sentence_transformers import SentenceTransformer
+import os
 import re
+
 import numpy as np
 import pandas as pd
 import polars as pl
 from umap import UMAP
 from bertopic import BERTopic
 from datasets import Dataset
+from sentence_transformers import SentenceTransformer
 from transformers import AutoModelForSequenceClassification, TrainingArguments, Trainer, DataCollatorWithPadding, AutoTokenizer
 from sklearn.metrics.pairwise import cosine_similarity
 import networkx as nx
 from tqdm import tqdm
+
+from cfg import cfg
 
 # num_repsentative_docsをトピックで各1つに変更, UMAPのseedを固定
 class CustomBERTopic(BERTopic):
@@ -177,7 +180,7 @@ def sentiment_analysis(reviews, use_cache):
     # Load the predictions from cache
     if use_cache:
         try:
-            predictions = np.load(f"../output/{cfg.data_type}/sentiment_analysis_predictions_{model_name}.npy")
+            predictions = np.load(f"../output/{cfg.data_type}/facility_{cfg.facility_id}/sentiment_analysis_predictions_{model_name}.npy")
             sentiments = np.argmax(predictions, axis=1)
             return sentiments, review_df
         except FileNotFoundError:
@@ -204,7 +207,8 @@ def sentiment_analysis(reviews, use_cache):
         tokenizer=tokenizer,
     )
     predictions = trainer.predict(ds).predictions
-    np.save(f"../output/{cfg.data_type}/sentiment_analysis_predictions_{model_name}.npy", predictions)
+    os.makedirs(f"../output/{cfg.data_type}/facility_{cfg.facility_id}", exist_ok=True)
+    np.save(f"../output/{cfg.data_type}/facility_{cfg.facility_id}/sentiment_analysis_predictions_{model_name}.npy", predictions)
     sentiments = np.argmax(predictions, axis=1)
     
     return sentiments, review_df
@@ -246,7 +250,7 @@ def embedding(reviews, use_cache=True):
     model_name = get_after_slash(cfg.embedding_model)
     if cfg.sentence_split:
         model_name = "split_" + model_name
-    emb_path = f"../output/{cfg.data_type}/reviews_emb_{model_name}.npy"
+    emb_path = f"../output/{cfg.data_type}/facility_{cfg.facility_id}/reviews_emb_{model_name}.npy"
 
     # Load the embeddings from cache
     if use_cache:

@@ -20,5 +20,5 @@ common_reviews = summarize(negative_reviews, reviews_embedding, top_n=cfg.n_summ
 
 # Save common reviews
 print("Saving common reviews...")
-common_reviews_path = f"../output/{cfg.data_type}/common_reviews.csv"
+common_reviews_path = f"../output/{cfg.data_type}/facility_{cfg.facility_id}/common_reviews.csv"
 pd.DataFrame(common_reviews).to_csv(common_reviews_path, index=False, header=False)
