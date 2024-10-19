@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from cfg import cfg
 
-# num_repsentative_docsをトピックで各1つに変更, UMAPのseedを固定
+# UMAPのseedを固定
 class CustomBERTopic(BERTopic):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -27,23 +27,6 @@ class CustomBERTopic(BERTopic):
                                low_memory=self.low_memory,
                                random_state=cfg.random_state)
 
-    def _save_representative_docs(self, documents: pd.DataFrame):
-        """ Save the 3 most representative docs per topic
-
-        Arguments:
-            documents: Dataframe with documents and their corresponding IDs
-
-        Updates:
-            self.representative_docs_: Populate each topic with 3 representative docs
-        """
-        repr_docs, _, _, _ = self._extract_representative_docs(
-            self.c_tf_idf_,
-            documents,
-            self.topic_representations_,
-            nr_samples=500,
-            nr_repr_docs=1
-        )
-        self.representative_docs_ = repr_docs
 
 def extract_specific_facility_reviews(facility_id):
     """
@@ -180,7 +163,7 @@ def sentiment_analysis(reviews, use_cache):
     # Load the predictions from cache
     if use_cache:
         try:
-            predictions = np.load(f"../output/{cfg.data_type}/facility_{cfg.facility_id}/sentiment_analysis_predictions_{model_name}.npy")
+            predictions = np.load(f"{cfg.output_dir}/sentiment_analysis_predictions_{model_name}.npy")
             sentiments = np.argmax(predictions, axis=1)
             return sentiments, review_df
         except FileNotFoundError:
@@ -207,8 +190,8 @@ def sentiment_analysis(reviews, use_cache):
         tokenizer=tokenizer,
     )
     predictions = trainer.predict(ds).predictions
-    os.makedirs(f"../output/{cfg.data_type}/facility_{cfg.facility_id}", exist_ok=True)
-    np.save(f"../output/{cfg.data_type}/facility_{cfg.facility_id}/sentiment_analysis_predictions_{model_name}.npy", predictions)
+    os.makedirs(cfg.output_dir, exist_ok=True)
+    np.save(f"{cfg.output_dir}/sentiment_analysis_predictions_{model_name}.npy", predictions)
     sentiments = np.argmax(predictions, axis=1)
     
     return sentiments, review_df
@@ -250,7 +233,7 @@ def embedding(reviews, use_cache=True):
     model_name = get_after_slash(cfg.embedding_model)
     if cfg.sentence_split:
         model_name = "split_" + model_name
-    emb_path = f"../output/{cfg.data_type}/facility_{cfg.facility_id}/reviews_emb_{model_name}.npy"
+    emb_path = f"{cfg.output_dir}/reviews_emb_{model_name}.npy"
 
     # Load the embeddings from cache
     if use_cache:
@@ -282,7 +265,7 @@ def build_similarity_matrix(embeddings):
 def lexrank(similarity_matrix, threshold=0.1):
     # 類似度が閾値以上の場合にエッジを作成
     graph = nx.Graph()
-    for i in tqdm(range(len(similarity_matrix))):
+    for i in range(len(similarity_matrix)):
         for j in range(i + 1, len(similarity_matrix)):
             if similarity_matrix[i][j] > threshold:
                 graph.add_edge(i, j, weight=similarity_matrix[i][j])
