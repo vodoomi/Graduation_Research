@@ -10,7 +10,7 @@ from datasets import Dataset
 from sentence_transformers import SentenceTransformer
 from transformers import AutoModelForSequenceClassification, TrainingArguments, Trainer, DataCollatorWithPadding, AutoTokenizer
 from sklearn.metrics.pairwise import cosine_similarity
-import networkx as nx
+import rustworkx as rx
 from tqdm import tqdm
 
 from cfg import cfg
@@ -39,7 +39,7 @@ def extract_specific_facility_reviews(facility_id):
         list: List of reviews of the specific facility.
     """
     all_reviews_df = pl.read_csv(cfg.data_path)
-    facility_reviews_df = all_reviews_df.filter(pl.col("facility_id") == facility_id)
+    facility_reviews_df = all_reviews_df.filter((pl.col("facility_id") == facility_id) & (pl.col("review").is_not_null()))
     return facility_reviews_df["review"].to_list()
 
 
@@ -134,7 +134,9 @@ def tokenize(example):
     tokenizer = AutoTokenizer.from_pretrained(cfg.sentiment_model)
 
     tokenized = tokenizer(
-        example["review"]
+        example["review"],
+        max_length=cfg.max_length,
+        truncation=True,
     ) 
         
     return tokenized
@@ -262,16 +264,16 @@ def build_similarity_matrix(embeddings):
     return similarity_matrix
 
 # 2. グラフの構築とPageRankの計算
-def lexrank(similarity_matrix, threshold=0.1):
-    # 類似度が閾値以上の場合にエッジを作成
-    graph = nx.Graph()
-    for i in range(len(similarity_matrix)):
-        for j in range(i + 1, len(similarity_matrix)):
-            if similarity_matrix[i][j] > threshold:
-                graph.add_edge(i, j, weight=similarity_matrix[i][j])
+def lexrank(similarity_matrix, threshold=0.1, damping=0.85):
+    # 類似度行列を閾値でフィルタリングして隣接行列を作成
+    adjacency_matrix = np.where(similarity_matrix > threshold, similarity_matrix, 0)
+    adjacency_matrix = adjacency_matrix.astype(np.float64)
+
+    # 隣接行列からグラフを作成
+    graph = rx.PyDiGraph.from_adjacency_matrix(adjacency_matrix)
     
-    # PageRankアルゴリズムを適用
-    scores = nx.pagerank(graph, weight='weight')
+    # rustworkxのPageRank関数を使用してスコアを計算
+    scores = rx.pagerank(graph, alpha=damping, weight_fn=lambda edge: edge)
     return scores
 
 # 3. スコアに基づく文の選択

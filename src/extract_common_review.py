@@ -32,7 +32,7 @@ if cfg.bertopic:
         common_reviews.extend(summarize(topic_reviews, topic_embedding, top_n=cfg.n_summarize_sentences))
 
 else:
-    common_reviews = summarize(negative_reviews, reviews_embedding, topics, top_n=cfg.n_summarize_sentences)
+    common_reviews = summarize(negative_reviews, reviews_embedding, top_n=cfg.n_summarize_sentences)
 
 # Save common reviews
 print("Saving common reviews...")
