@@ -1,6 +1,6 @@
-print("Hello, scraping.py!")
-
+import os
 import time
+
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -23,7 +23,7 @@ options.add_argument('--ignore-ssl-errors')
 
 
 # ブラウザの起動
-chromedriver = "C:/Users/abemi/chromedriver-win64/chromedriver.exe"
+chromedriver = os.environ.get("CHROMEDRIVER_PATH")
 service = Service(executable_path=chromedriver)
 driver = webdriver.Chrome(service=service)
 url = "https://www.jalan.net/yad385995/kuchikomi/?contHideFlg=1&maxPrice=999999&rootCd=7701" \

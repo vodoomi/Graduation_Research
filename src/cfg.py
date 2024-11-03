@@ -6,8 +6,9 @@ class CFG:
     use_embedding_cache = True
     sentiment_batch_size = 16
     random_state = 88
-    lex_rank_threshold = 0.5
+    lex_rank_threshold = 0.1
     n_summarize_sentences = 5
+    n_sample_reviews = 500
     max_length = 512
     facility_id = 19455
     data_path = f"../output/{data_type}/all_reviews.csv"
