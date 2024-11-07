@@ -4,12 +4,13 @@ class CFG:
     bertopic = False
     use_sentiment_cache = True
     use_embedding_cache = True
-    sentiment_batch_size = 16
+    sentiment_batch_size = 8
     random_state = 88
-    lex_rank_threshold = 0.1
-    n_summarize_sentences = 5
+    lex_rank_threshold = 0.25
+    n_summarize_sentences = 14
     n_sample_reviews = 500
     max_length = 512
+    min_review_length = 6
     facility_id = 19455
     data_path = f"../output/{data_type}/all_reviews.csv"
     output_dir = f"../output/{data_type}/facility_{facility_id}"

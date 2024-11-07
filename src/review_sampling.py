@@ -25,4 +25,4 @@ sampled_reviews_df = reviews_df.sample(n=cfg.n_sample_reviews, shuffle=True, see
 # Save sampled reviews
 print("Saving sampled reviews...")
 sampled_reviews_path = f"{cfg.output_dir}/sampled_reviews.csv"
-sampled_reviews_df.write_csv(sampled_reviews_path)
+sampled_reviews_df.to_pandas().to_csv(sampled_reviews_path, index=False, encoding="cp932")

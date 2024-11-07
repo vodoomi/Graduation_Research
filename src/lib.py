@@ -55,13 +55,13 @@ def split_one_sentence(reviews):
     """
     splitted_reviews = []
     for review in reviews:
-        splitted_reviews.extend(re.split(r'[。.!?！？]', review))
+        splitted_reviews.extend(re.split(r'[。｡]', review))
     return splitted_reviews
 
 
 def preprocess_reviews(reviews):
     """
-    Preprocess reviews by removing empty strings.
+    Preprocess reviews. Remove short reviews and the part after "【ご利用の宿泊プラン】".
 
     Args:
         reviews (list): List of reviews.
@@ -69,7 +69,10 @@ def preprocess_reviews(reviews):
     Returns:
         list: List of preprocessed reviews.
     """
-    preprocessed_reviews = list(filter(lambda x: x and x.strip(), reviews))
+    # 【ご利用の宿泊プラン】以降の文字列を削除し、全角・半角スペースを削除
+    preprocessed_reviews = [x.split("【ご利用の宿泊プラン】")[0].strip().replace("\u3000", "").replace(" ", "") for x in reviews]
+    # 短いレビューを削除
+    preprocessed_reviews = [x for x in preprocessed_reviews if len(x) >= cfg.min_review_length]
     return preprocessed_reviews
 
 
@@ -167,6 +170,7 @@ def sentiment_analysis(reviews, use_cache):
         try:
             predictions = np.load(f"{cfg.output_dir}/sentiment_analysis_predictions_{model_name}.npy")
             sentiments = np.argmax(predictions, axis=1)
+            assert len(sentiments) == len(review_df), "Number of sentiments and reviews do not match. Set use_cache=False to recompute."
             return sentiments, review_df
         except FileNotFoundError:
             pass
@@ -241,6 +245,7 @@ def embedding(reviews, use_cache=True):
     if use_cache:
         try:
             sentence_embedding = np.load(emb_path)
+            assert len(sentence_embedding) == len(reviews), "Number of embeddings and reviews do not match. Set use_cache=False to recompute."
             return sentence_embedding
         except FileNotFoundError:
             pass
