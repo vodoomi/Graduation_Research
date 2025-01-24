@@ -1,17 +1,21 @@
-from cfg import cfg
-from sentence_transformers import SentenceTransformer
+import os
 import re
+
 import numpy as np
 import pandas as pd
+import polars as pl
 from umap import UMAP
 from bertopic import BERTopic
 from datasets import Dataset
+from sentence_transformers import SentenceTransformer
 from transformers import AutoModelForSequenceClassification, TrainingArguments, Trainer, DataCollatorWithPadding, AutoTokenizer
 from sklearn.metrics.pairwise import cosine_similarity
-import networkx as nx
+import rustworkx as rx
 from tqdm import tqdm
 
-# num_repsentative_docsをトピックで各1つに変更, UMAPのseedを固定
+from cfg import cfg
+
+# UMAPのseedを固定
 class CustomBERTopic(BERTopic):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -23,24 +27,20 @@ class CustomBERTopic(BERTopic):
                                low_memory=self.low_memory,
                                random_state=cfg.random_state)
 
-    def _save_representative_docs(self, documents: pd.DataFrame):
-        """ Save the 3 most representative docs per topic
 
-        Arguments:
-            documents: Dataframe with documents and their corresponding IDs
+def extract_specific_facility_reviews(facility_id):
+    """
+    Extract reviews of a specific facility.
 
-        Updates:
-            self.representative_docs_: Populate each topic with 3 representative docs
-        """
-        repr_docs, _, _, _ = self._extract_representative_docs(
-            self.c_tf_idf_,
-            documents,
-            self.topic_representations_,
-            nr_samples=500,
-            nr_repr_docs=1
-        )
-        self.representative_docs_ = repr_docs
-
+    Args:
+        facility_id (str): Facility ID.
+    
+    Returns:
+        list: List of reviews of the specific facility.
+    """
+    all_reviews_df = pl.read_csv(cfg.data_path)
+    facility_reviews_df = all_reviews_df.filter((pl.col("facility_id") == facility_id) & (pl.col("review").is_not_null()))
+    return facility_reviews_df["review"].to_list()
 
 
 def split_one_sentence(reviews):
@@ -55,13 +55,13 @@ def split_one_sentence(reviews):
     """
     splitted_reviews = []
     for review in reviews:
-        splitted_reviews.extend(re.split(r'[。.!?！？]', review))
+        splitted_reviews.extend(re.split(r'[。｡]', review))
     return splitted_reviews
 
 
 def preprocess_reviews(reviews):
     """
-    Preprocess reviews by removing empty strings.
+    Preprocess reviews. Remove short reviews and the part after "【ご利用の宿泊プラン】".
 
     Args:
         reviews (list): List of reviews.
@@ -69,7 +69,10 @@ def preprocess_reviews(reviews):
     Returns:
         list: List of preprocessed reviews.
     """
-    preprocessed_reviews = list(filter(lambda x: x and x.strip(), reviews))
+    # 【ご利用の宿泊プラン】以降の文字列を削除し、全角・半角スペースを削除
+    preprocessed_reviews = [x.split("【ご利用の宿泊プラン】")[0].strip().replace("\u3000", "").replace(" ", "") for x in reviews]
+    # 短いレビューを削除
+    preprocessed_reviews = [x for x in preprocessed_reviews if len(x) >= cfg.min_review_length]
     return preprocessed_reviews
 
 
@@ -83,11 +86,16 @@ def load_data(data_path):
     Returns:
         list: List of reviews.
     """
-    data = pd.read_csv(data_path)
-    reviews = data["review"].tolist()
+    assert cfg.data_type in ["jaran", "rakuten"], "cfg.data_type must be either 'jaran' or 'rakuten'."
+    if cfg.data_type == "jaran":
+        data = pd.read_csv(data_path)
+        reviews = data["review"].tolist()
+    elif cfg.data_type == "rakuten":
+        reviews = extract_specific_facility_reviews(cfg.facility_id)
     if cfg.sentence_split:
         reviews = split_one_sentence(reviews)
     reviews = preprocess_reviews(reviews)
+    print(f"Number of reviews: {len(reviews)}")
     return reviews
 
 
@@ -129,7 +137,9 @@ def tokenize(example):
     tokenizer = AutoTokenizer.from_pretrained(cfg.sentiment_model)
 
     tokenized = tokenizer(
-        example["split_review"]
+        example["review"],
+        max_length=cfg.max_length,
+        truncation=True,
     ) 
         
     return tokenized
@@ -158,15 +168,16 @@ def sentiment_analysis(reviews, use_cache):
     # Load the predictions from cache
     if use_cache:
         try:
-            predictions = np.load(f"../output/{cfg.data_type}/sentiment_analysis_predictions_{model_name}.npy")
+            predictions = np.load(f"{cfg.output_dir}/sentiment_analysis_predictions_{model_name}.npy")
             sentiments = np.argmax(predictions, axis=1)
+            assert len(sentiments) == len(review_df), "Number of sentiments and reviews do not match. Set use_cache=False to recompute."
             return sentiments, review_df
         except FileNotFoundError:
             pass
     
     # Tokenize the reviews
     ds = Dataset.from_pandas(review_df)
-    ds = ds.map(tokenize, num_proc=4)
+    ds = ds.map(tokenize, batched=True)
 
     # Perform sentiment analysis
     tokenizer = AutoTokenizer.from_pretrained(cfg.sentiment_model)
@@ -185,7 +196,8 @@ def sentiment_analysis(reviews, use_cache):
         tokenizer=tokenizer,
     )
     predictions = trainer.predict(ds).predictions
-    np.save(f"../output/{cfg.data_type}/sentiment_analysis_predictions_{model_name}.npy", predictions)
+    os.makedirs(cfg.output_dir, exist_ok=True)
+    np.save(f"{cfg.output_dir}/sentiment_analysis_predictions_{model_name}.npy", predictions)
     sentiments = np.argmax(predictions, axis=1)
     
     return sentiments, review_df
@@ -206,6 +218,8 @@ def extract_negative_reviews(reviews, use_cache=True):
 
     # Extract negative reviews
     negative_reviews = review_df.loc[sentiments == 0, "review"]
+
+    print(f"Number of negative reviews: {len(negative_reviews)}")
     
     return negative_reviews.tolist()
 
@@ -225,12 +239,13 @@ def embedding(reviews, use_cache=True):
     model_name = get_after_slash(cfg.embedding_model)
     if cfg.sentence_split:
         model_name = "split_" + model_name
-    emb_path = f"../output/{cfg.data_type}/reviews_emb_{model_name}.npy"
+    emb_path = f"{cfg.output_dir}/reviews_emb_{model_name}.npy"
 
     # Load the embeddings from cache
     if use_cache:
         try:
             sentence_embedding = np.load(emb_path)
+            assert len(sentence_embedding) == len(reviews), "Number of embeddings and reviews do not match. Set use_cache=False to recompute."
             return sentence_embedding
         except FileNotFoundError:
             pass
@@ -254,16 +269,16 @@ def build_similarity_matrix(embeddings):
     return similarity_matrix
 
 # 2. グラフの構築とPageRankの計算
-def lexrank(similarity_matrix, threshold=0.1):
-    # 類似度が閾値以上の場合にエッジを作成
-    graph = nx.Graph()
-    for i in tqdm(range(len(similarity_matrix))):
-        for j in range(i + 1, len(similarity_matrix)):
-            if similarity_matrix[i][j] > threshold:
-                graph.add_edge(i, j, weight=similarity_matrix[i][j])
+def lexrank(similarity_matrix, threshold=0.1, damping=0.85):
+    # 類似度行列を閾値でフィルタリングして隣接行列を作成
+    adjacency_matrix = np.where(similarity_matrix > threshold, similarity_matrix, 0)
+    adjacency_matrix = adjacency_matrix.astype(np.float64)
+
+    # 隣接行列からグラフを作成
+    graph = rx.PyDiGraph.from_adjacency_matrix(adjacency_matrix)
     
-    # PageRankアルゴリズムを適用
-    scores = nx.pagerank(graph, weight='weight')
+    # rustworkxのPageRank関数を使用してスコアを計算
+    scores = rx.pagerank(graph, alpha=damping, weight_fn=lambda edge: edge)
     return scores
 
 # 3. スコアに基づく文の選択

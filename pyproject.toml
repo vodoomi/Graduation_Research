@@ -4,6 +4,7 @@ version = "0.1.0"
 description = ""
 authors = ["vodoomi <abe.mikito@gmail.com>"]
 readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -18,6 +19,11 @@ bertopic = "^0.16.2"
 datasets = "^2.20.0"
 matplotlib = "^3.9.1.post1"
 accelerate = "^0.33.0"
+python-dotenv = "^1.0.1"
+polars = "^1.9.0"
+ipykernel = "^6.29.5"
+rustworkx = "^0.15.1"
+japanize-matplotlib = "^1.1.3"
 
 
 [tool.poetry.group.dev.dependencies]
