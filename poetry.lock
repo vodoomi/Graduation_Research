@@ -1110,6 +1110,19 @@ test = ["packaging", "pickleshare", "pytest", "pytest-asyncio (<0.22)", "testpat
 test-extra = ["curio", "ipython[test]", "matplotlib (!=3.2.0)", "nbformat", "numpy (>=1.23)", "pandas", "trio"]
 
 [[package]]
+name = "japanize-matplotlib"
+version = "1.1.3"
+description = "matplotlibのフォント設定を自動で日本語化する"
+optional = false
+python-versions = "*"
+files = [
+    {file = "japanize-matplotlib-1.1.3.tar.gz", hash = "sha256:e89e7d9e109820962650e59a130403b59b33915fde3871a265a5891d9bf5e079"},
+]
+
+[package.dependencies]
+matplotlib = "*"
+
+[[package]]
 name = "jedi"
 version = "0.19.1"
 description = "An autocompletion tool for Python that can be used for text editors."
@@ -3796,4 +3809,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "32f3f77bde3c69d29f9d8a77247f7c23f32d8ed8f7d61aca90cba558eb5b9045"
+content-hash = "f49bef63eb18c064bcbd0e1bf4bd73b2d184a81890e419f8c1e43db70c9e5b3b"
